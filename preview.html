@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simulador iOS - Node-Locked License Client</title>
+  <style>
+    :root {
+      --system-bg: #f2f2f7;
+      --card-bg: #ffffff;
+      --secondary-bg: #f2f2f7;
+      --primary-blue: #007aff;
+      --primary-cyan: #32ade6;
+      --text-primary: #1c1c1e;
+      --text-secondary: #8e8e93;
+      --border-color: #e5e5ea;
+      --accent-green: #34c759;
+      --accent-purple: #af52de;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      background: linear-gradient(135deg, #1e293b, #0f172a);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      color: #f8fafc;
+    }
+
+    .header-banner {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .header-banner h1 {
+      font-size: 24px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 6px;
+    }
+
+    .header-banner p {
+      font-size: 14px;
+      color: #94a3b8;
+    }
+
+    .phone-wrapper {
+      position: relative;
+      width: 390px;
+      height: 800px;
+      background: #000;
+      border-radius: 54px;
+      padding: 12px;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6), 0 0 0 2px #334155;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .phone-screen {
+      width: 100%;
+      height: 100%;
+      background: var(--system-bg);
+      border-radius: 44px;
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Dynamic Island */
+    .dynamic-island {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 120px;
+      height: 32px;
+      background: #000000;
+      border-radius: 20px;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+    }
+
+    .camera-lens {
+      width: 11px;
+      height: 11px;
+      background: #111827;
+      border-radius: 50%;
+      border: 1px solid #1f2937;
+    }
+
+    .sensor {
+      width: 8px;
+      height: 8px;
+      background: #0f172a;
+      border-radius: 50%;
+    }
+
+    /* iOS Status Bar */
+    .status-bar {
+      height: 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 28px 0;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      z-index: 90;
+    }
+
+    .status-icons {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+      font-size: 11px;
+    }
+
+    /* App Views */
+    .view-container {
+      flex: 1;
+      overflow-y: auto;
+      display: none;
+      flex-direction: column;
+    }
+
+    .view-container.active {
+      display: flex;
+    }
+
+    /* LOGIN VIEW */
+    .login-content {
+      padding: 20px 20px 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .login-icon-box {
+      width: 84px;
+      height: 84px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #007aff, #32ade6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 15px;
+      box-shadow: 0 10px 20px rgba(0, 122, 255, 0.3);
+    }
+
+    .login-icon-box svg {
+      width: 44px;
+      height: 44px;
+      fill: #ffffff;
+    }
+
+    .login-title {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text-primary);
+      text-align: center;
+    }
+
+    .login-subtitle {
+      font-size: 13px;
+      color: var(--text-secondary);
+      text-align: center;
+      line-height: 1.4;
+      padding: 0 12px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border-radius: 18px;
+      padding: 18px;
+      width: 100%;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+    }
+
+    .card-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+
+    .input-box {
+      display: flex;
+      align-items: center;
+      background: var(--secondary-bg);
+      border-radius: 12px;
+      padding: 12px 14px;
+      gap: 10px;
+      border: 1.5px solid transparent;
+      transition: all 0.2s;
+    }
+
+    .input-box:focus-within {
+      border-color: var(--primary-blue);
+      background: #ffffff;
+    }
+
+    .input-box input {
+      border: none;
+      background: transparent;
+      outline: none;
+      font-size: 17px;
+      font-weight: 600;
+      font-family: monospace;
+      color: var(--text-primary);
+      width: 100%;
+      letter-spacing: 1px;
+    }
+
+    .btn-primary {
+      width: 100%;
+      background: linear-gradient(135deg, #007aff, #32ade6);
+      color: white;
+      border: none;
+      border-radius: 14px;
+      padding: 14px;
+      font-size: 16px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      box-shadow: 0 6px 14px rgba(0, 122, 255, 0.25);
+      margin-top: 14px;
+      transition: transform 0.1s, opacity 0.2s;
+    }
+
+    .btn-primary:active {
+      transform: scale(0.98);
+      opacity: 0.9;
+    }
+
+    .demo-keys {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .demo-pill {
+      background: #e2e8f0;
+      color: #334155;
+      font-size: 11px;
+      font-family: monospace;
+      font-weight: 600;
+      padding: 5px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      border: none;
+    }
+
+    .demo-pill:hover {
+      background: #cbd5e1;
+    }
+
+    .hwid-card {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .hwid-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .hwid-badge {
+      background: rgba(175, 82, 222, 0.12);
+      color: var(--accent-purple);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 12px;
+      cursor: pointer;
+      border: none;
+    }
+
+    .hwid-val {
+      font-family: monospace;
+      font-size: 11px;
+      color: var(--text-secondary);
+      background: var(--secondary-bg);
+      padding: 8px 10px;
+      border-radius: 8px;
+      word-break: break-all;
+    }
+
+    /* DASHBOARD VIEW */
+    .dashboard-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 20px;
+      border-bottom: 1px solid rgba(0,0,0,0.05);
+      background: rgba(255, 255, 255, 0.8);
+      backdrop-filter: blur(10px);
+    }
+
+    .dashboard-header h2 {
+      font-size: 17px;
+      font-weight: 600;
+    }
+
+    .btn-logout {
+      background: none;
+      border: none;
+      color: #ff3b30;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .dashboard-content {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding-bottom: 100px;
+    }
+
+    .license-banner {
+      background: #ffffff;
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .license-status-tag {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .active-dot-box {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-green);
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      background: var(--accent-green);
+      border-radius: 50%;
+      box-shadow: 0 0 8px rgba(52, 199, 89, 0.8);
+    }
+
+    .role-badge {
+      background: rgba(0, 122, 255, 0.12);
+      color: var(--primary-blue);
+      font-size: 11px;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+
+    .license-key-display {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+
+    .key-text {
+      font-size: 18px;
+      font-family: monospace;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .remaining-timer {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .divider {
+      height: 1px;
+      background: var(--border-color);
+      margin: 4px 0;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .info-row span:last-child {
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .config-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .group-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding-left: 4px;
+    }
+
+    .toggle-list {
+      background: #ffffff;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    }
+
+    .toggle-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .toggle-item:last-child {
+      border-bottom: none;
+    }
+
+    .toggle-info h4 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+    }
+
+    .toggle-info p {
+      font-size: 11px;
+      color: var(--text-secondary);
+      max-width: 230px;
+      line-height: 1.3;
+    }
+
+    /* iOS Switch */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 26px;
+      flex-shrink: 0;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #e5e5ea;
+      transition: .3s;
+      border-radius: 34px;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 22px;
+      width: 22px;
+      left: 2px;
+      bottom: 2px;
+      background-color: white;
+      transition: .3s;
+      border-radius: 50%;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+
+    input:checked + .slider {
+      background-color: #34c759;
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(18px);
+    }
+
+    /* Bottom Action Bar */
+    .floating-bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(16px);
+      padding: 14px 20px 24px;
+      border-top: 1px solid rgba(0,0,0,0.06);
+    }
+
+    .btn-apply {
+      width: 100%;
+      background: linear-gradient(135deg, #007aff, #5856d6);
+      color: white;
+      border: none;
+      border-radius: 14px;
+      padding: 14px;
+      font-size: 15px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      box-shadow: 0 8px 18px rgba(0, 122, 255, 0.3);
+    }
+
+    /* Alert modal */
+    .ios-alert {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 270px;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(20px);
+      border-radius: 14px;
+      text-align: center;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+      z-index: 200;
+      display: none;
+      overflow: hidden;
+    }
+
+    .alert-body {
+      padding: 18px 16px;
+    }
+
+    .alert-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .alert-msg {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .alert-btn {
+      width: 100%;
+      border: none;
+      border-top: 1px solid var(--border-color);
+      background: transparent;
+      padding: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--primary-blue);
+      cursor: pointer;
+    }
+
+    .home-indicator {
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 134px;
+      height: 5px;
+      background: #000;
+      border-radius: 10px;
+      z-index: 150;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header-banner">
+    <h1>📱 Vista Previa Interactiva de tu App iOS</h1>
+    <p>Conectada en vivo a tu backend en <b>http://localhost:3002</b></p>
+  </div>
+
+  <div class="phone-wrapper">
+    <div class="phone-screen">
+      <!-- Dynamic Island -->
+      <div class="dynamic-island">
+        <div class="camera-lens"></div>
+        <div class="sensor"></div>
+      </div>
+
+      <!-- Status Bar -->
+      <div class="status-bar">
+        <span>9:41</span>
+        <div class="status-icons">
+          <span>5G</span>
+          <span>●●●</span>
+          <span>100%</span>
+        </div>
+      </div>
+
+      <!-- VIEW 1: LOGIN VIEW -->
+      <div id="loginView" class="view-container active">
+        <div class="login-content">
+          <div class="login-icon-box">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 6c1.66 0 3 1.34 3 3v2h1v4H8v-4h1v-2c0-1.66 1.34-3 3-3zm0 2c-.55 0-1 .45-1 1v2h2v-2c0-.55-.45-1-1-1z"/>
+            </svg>
+          </div>
+
+          <div>
+            <h2 class="login-title">Activación de Licencia</h2>
+            <p class="login-subtitle">Introduce tu clave para autorizar y vincular este dispositivo de forma exclusiva.</p>
+          </div>
+
+          <div class="card">
+            <div class="card-label">Clave de Producto</div>
+            <div class="input-box">
+              <span style="color: var(--primary-blue); font-size: 16px;">🔑</span>
+              <input type="text" id="licenseInput" placeholder="XXXX-XXXX-XXXX" value="TEST-72HS-DEMO" maxlength="14" />
+            </div>
+
+            <div class="demo-keys">
+              <span style="font-size: 11px; color: var(--text-secondary); align-self: center;">Probar:</span>
+              <button class="demo-pill" onclick="setKey('TEST-72HS-DEMO')">72 Horas</button>
+              <button class="demo-pill" onclick="setKey('PERM-ANEN-TEST')">Vitalicia</button>
+            </div>
+
+            <button class="btn-primary" id="btnAuth" onclick="handleAuth()">
+              <span>Activar y Vincular Dispositivo</span>
+              <span>➔</span>
+            </button>
+          </div>
+
+          <div class="card hwid-card">
+            <div class="hwid-header">
+              <span>🖥 Identificador de Hardware (HWID)</span>
+              <button class="hwid-badge" onclick="alert('HWID copiado al portapapeles')">Copiar</button>
+            </div>
+            <div class="hwid-val" id="hwidDisplay">IOS-UUID-88A1F-992B-4412-NODE-LOCKED</div>
+            <p style="font-size: 11px; color: var(--text-secondary); line-height: 1.3;">
+              ℹ️ Este identificador se generó y guardó de forma inmutable en el Keychain local. La licencia quedará vinculada exclusivamente a esta máquina.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW 2: DASHBOARD VIEW -->
+      <div id="dashboardView" class="view-container">
+        <div class="dashboard-header">
+          <span style="font-size: 18px;">⚙️</span>
+          <h2>Panel de Control</h2>
+          <button class="btn-logout" onclick="handleLogout()">Cerrar ➔</button>
+        </div>
+
+        <div class="dashboard-content">
+          <!-- Licencia Info -->
+          <div class="license-banner">
+            <div class="license-status-tag">
+              <div class="active-dot-box">
+                <div class="dot"></div>
+                <span>LICENCIA ACTIVA (NODE-LOCKED)</span>
+              </div>
+              <span class="role-badge" id="roleBadge">USER</span>
+            </div>
+
+            <div class="license-key-display">
+              <span class="key-text" id="activeKeyText">TEST-72HS-DEMO</span>
+              <span class="remaining-timer" id="remainingTimer">⏱ 71h 59m</span>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="info-row">
+              <span>Vigencia:</span>
+              <span id="expirationText">72 horas</span>
+            </div>
+            <div class="info-row">
+              <span>HWID Vinculado:</span>
+              <span id="linkedHwidText">IOS-UUID-88A1F...</span>
+            </div>
+          </div>
+
+          <!-- Grupos de Opciones -->
+          <div class="config-group">
+            <div class="group-title">⚡ Rendimiento y Motor</div>
+            <div class="toggle-list">
+              <div class="toggle-item">
+                <div class="toggle-info">
+                  <h4>Modo Ultra Rendimiento</h4>
+                  <p>Desbloquea aceleración por GPU y máxima tasa de refresco (120 Hz).</p>
+                </div>
+                <label class="switch"><input type="checkbox" checked><span class="slider"></span></label>
+              </div>
+              <div class="toggle-item">
+                <div class="toggle-info">
+                  <h4>Caché en Memoria Acelerada</h4>
+                  <p>Reduce latencia manteniendo recursos precargados.</p>
+                </div>
+                <label class="switch"><input type="checkbox"><span class="slider"></span></label>
+              </div>
+              <div class="toggle-item">
+                <div class="toggle-info">
+                  <h4>Audio de Baja Latencia</h4>
+                  <p>Prioriza buffers reducidos para procesamiento en tiempo real.</p>
+                </div>
+                <label class="switch"><input type="checkbox" checked><span class="slider"></span></label>
+              </div>
+            </div>
+          </div>
+
+          <div class="config-group">
+            <div class="group-title">🛡️ Red y Seguridad</div>
+            <div class="toggle-list">
+              <div class="toggle-item">
+                <div class="toggle-info">
+                  <h4>Validación SSL Estricta</h4>
+                  <p>Rechaza conexiones intermedias o certificados no oficiales.</p>
+                </div>
+                <label class="switch"><input type="checkbox" checked><span class="slider"></span></label>
+              </div>
+              <div class="toggle-item">
+                <div class="toggle-info">
+                  <h4>Túnel Proxy Local</h4>
+                  <p>Enruta el tráfico a través de socket 127.0.0.1:9050.</p>
+                </div>
+                <label class="switch"><input type="checkbox"><span class="slider"></span></label>
+              </div>
+            </div>
+          </div>
+
+          <div class="config-group">
+            <div class="group-title">🎛️ Módulos Avanzados</div>
+            <div class="toggle-list">
+              <div class="toggle-item">
+                <div class="toggle-info">
+                  <h4>HUD de Depuración en Pantalla</h4>
+                  <p>Superpone métricas de FPS, memoria y tiempo de cuadro.</p>
+                </div>
+                <label class="switch"><input type="checkbox"><span class="slider"></span></label>
+              </div>
+              <div class="toggle-item">
+                <div class="toggle-info">
+                  <h4>Sincronización Automática</h4>
+                  <p>Guarda perfiles de configuración tras cada modificación.</p>
+                </div>
+                <label class="switch"><input type="checkbox" checked><span class="slider"></span></label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Floating action button -->
+        <div class="floating-bar">
+          <button class="btn-apply" onclick="showAlert('Configuración Aplicada', 'Parámetros sincronizados correctamente en Keychain y entorno local.')">
+            <span>↗</span>
+            <span>Aplicar configuración</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- iOS Native Alert Modal -->
+      <div id="iosAlert" class="ios-alert">
+        <div class="alert-body">
+          <div class="alert-title" id="alertTitle">Alerta</div>
+          <div class="alert-msg" id="alertMsg">Mensaje</div>
+        </div>
+        <button class="alert-btn" onclick="closeAlert()">Aceptar</button>
+      </div>
+
+      <!-- Home Indicator -->
+      <div class="home-indicator"></div>
+    </div>
+  </div>
+
+  <script>
+    const hwid = "IOS-UUID-88A1F-992B-4412-NODE-LOCKED";
+    const API_URL = "http://localhost:3002/api/v1";
+
+    function setKey(k) {
+      document.getElementById('licenseInput').value = k;
+    }
+
+    function showAlert(title, msg) {
+      document.getElementById('alertTitle').innerText = title;
+      document.getElementById('alertMsg').innerText = msg;
+      document.getElementById('iosAlert').style.display = 'block';
+    }
+
+    function closeAlert() {
+      document.getElementById('iosAlert').style.display = 'none';
+    }
+
+    async function handleAuth() {
+      const key = document.getElementById('licenseInput').value.trim().toUpperCase();
+      const btn = document.getElementById('btnAuth');
+      btn.innerText = "Verificando...";
+      btn.style.opacity = "0.7";
+
+      try {
+        const res = await fetch(`${API_URL}/auth`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ license_key: key, hwid: hwid })
+        });
+
+        const data = await res.json();
+        btn.innerText = "Activar y Vincular Dispositivo ➔";
+        btn.style.opacity = "1";
+
+        if (data.success) {
+          const lic = data.data.license;
+          document.getElementById('activeKeyText').innerText = lic.license_key;
+          document.getElementById('roleBadge').innerText = lic.role.toUpperCase();
+          document.getElementById('expirationText').innerText = lic.is_lifetime ? "Vitalicia (Ilimitada)" : (lic.expires_at ? new Date(lic.expires_at).toLocaleString() : "Sin fecha");
+          document.getElementById('linkedHwidText').innerText = lic.hwid.substring(0, 15) + "...";
+          document.getElementById('remainingTimer').innerText = lic.is_lifetime ? "⏱ Ilimitado" : "⏱ Activa";
+
+          document.getElementById('loginView').classList.remove('active');
+          document.getElementById('dashboardView').classList.add('active');
+        } else {
+          showAlert("Error de Licencia", data.error?.message || "No se pudo validar la clave");
+        }
+      } catch (err) {
+        btn.innerText = "Activar y Vincular Dispositivo ➔";
+        btn.style.opacity = "1";
+        showAlert("Error de Conexión", "Asegúrate de que el backend esté encendido en http://localhost:3002");
+      }
+    }
+
+    function handleLogout() {
+      document.getElementById('dashboardView').classList.remove('active');
+      document.getElementById('loginView').classList.add('active');
+    }
+  </script>
+</body>
+</html>
