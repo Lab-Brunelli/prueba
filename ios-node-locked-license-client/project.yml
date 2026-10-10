@@ -1,0 +1,20 @@
+name: NodeLockedLicenseApp
+options:
+  bundleIdPrefix: com.company
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  NodeLockedLicenseApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: .
+        excludes:
+          - "**/*.md"
+          - ".github/**"
+          - "project.yml"
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.company.NodeLockedLicenseApp
+      INFOPLIST_FILE: Info.plist
+      ENABLE_BITCODE: NO
+      SWIFT_VERSION: "5.9"
