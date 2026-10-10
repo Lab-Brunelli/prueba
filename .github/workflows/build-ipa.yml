@@ -35,6 +35,13 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
 
+      - name: Sign ad-hoc with entitlements
+        run: |
+          cd ios-node-locked-license-client
+          APP=build/NodeLockedLicenseApp.xcarchive/Products/Applications/NodeLockedLicenseApp.app
+          codesign --force --sign - --entitlements NodeLockedLicenseApp.entitlements --deep "$APP"
+          codesign -d --entitlements - "$APP"
+
       - name: Package Payload into IPA
         run: |
           cd ios-node-locked-license-client
