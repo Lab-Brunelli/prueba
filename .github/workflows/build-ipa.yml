@@ -1,0 +1,54 @@
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Compile and Export IPA
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode Version
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode Project
+        run: |
+          cd ios-node-locked-license-client
+          xcodegen generate
+
+      - name: Build and Archive
+        run: |
+          cd ios-node-locked-license-client
+          xcodebuild -project NodeLockedLicenseApp.xcodeproj \
+            -scheme NodeLockedLicenseApp \
+            -sdk iphoneos \
+            -configuration Release \
+            -archivePath build/NodeLockedLicenseApp.xcarchive \
+            archive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Package Payload into IPA
+        run: |
+          cd ios-node-locked-license-client
+          mkdir -p build/Payload
+          cp -r build/NodeLockedLicenseApp.xcarchive/Products/Applications/NodeLockedLicenseApp.app build/Payload/
+          cd build
+          zip -r NodeLockedLicenseApp.ipa Payload
+          cd ../..
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NodeLockedLicenseApp-Unsigned-IPA
+          path: ios-node-locked-license-client/build/NodeLockedLicenseApp.ipa
