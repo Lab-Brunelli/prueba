@@ -2,7 +2,7 @@ import SwiftUI
 
 public struct DashboardView: View {
     @ObservedObject var viewModel: AppViewModel
-    @State private var urlSchemeInput: String = "targetapp://apply-config"
+    @State private var urlSchemeInput: String = "gameclient://"
     @State private var showSettingsSheet: Bool = false
     
     public init(viewModel: AppViewModel) {
@@ -223,7 +223,7 @@ public struct DashboardView: View {
         NavigationStack {
             Form {
                 Section(header: Text("Destino de Redirección")) {
-                    TextField("URL Scheme (ej: myapp://launch)", text: $urlSchemeInput)
+                    TextField("URL Scheme (ej: gameclient://)", text: $urlSchemeInput)
                         .autocorrectionDisabled(true)
                         .textInputAutocapitalization(.never)
                         .font(.system(.body, design: .monospaced))
