@@ -5,8 +5,10 @@ public final class AuthService {
     
     public static let shared = AuthService()
     
-    /// URL base del servidor de licencias (ajustar según entorno local o producción)
-    public var baseURL: URL = URL(string: "http://localhost:3002")!
+    /// URL base del servidor de licencias.
+    /// En simulador puede ser http://localhost:3002
+    /// En iPhone real DEBE ser la IP de tu PC en la red: http://10.186.85.106:3002
+    public var baseURL: URL = URL(string: "http://10.186.85.106:3002")!
     
     private let session: URLSession
     private var heartbeatTask: Task<Void, Never>?
