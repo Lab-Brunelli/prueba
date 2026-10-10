@@ -163,8 +163,8 @@ public final class AppViewModel: ObservableObject {
     
     // MARK: - Lanzamiento de Aplicación Externa vía URL Scheme
     
-    /// Empaqueta la configuración activa y la envía a otra aplicación mediante un URL Scheme personalizado.
-    public func applyAndLaunchExternalApp(urlScheme: String = "targetapp://apply-config") {
+    /// Empaqueta la configuración activa, accede al contenedor del juego y lanza la app externa.
+    public func applyAndLaunchExternalApp(urlScheme: String = "gameclient://") {
         // 1. Recopilar valores de configuración activados
         var activeFlags: [String: Bool] = [:]
         for category in configCategories {
@@ -173,14 +173,22 @@ public final class AppViewModel: ObservableObject {
             }
         }
         
-        // 2. Serializar a JSON
+        // 2. Intentar acceder al contenedor de Free Fire (MobileHouseArrest)
+        if let ffContainer = HouseArrestManager.shared.containerURL(forBundleID: HouseArrestManager.freeFireBundleID) {
+            NSLog("✅ Contenedor de Free Fire accesible: \(ffContainer.path)")
+            // Acá más adelante se copian los archivos del holograma con AssetSyncEngine
+        } else {
+            NSLog("❌ No se pudo acceder al contenedor de Free Fire (revisá Bundle ID y certificado)")
+        }
+        
+        // 3. Serializar a JSON
         guard let jsonData = try? JSONSerialization.data(withJSONObject: activeFlags, options: []),
               let jsonString = String(data: jsonData, encoding: .utf8) else {
             presentError("Error al codificar las opciones de configuración.")
             return
         }
         
-        // 3. Construir URL con parámetros
+        // 4. Construir URL con parámetros
         guard var components = URLComponents(string: urlScheme) else {
             presentError("El formato de URL Scheme es inválido.")
             return
@@ -197,7 +205,7 @@ public final class AppViewModel: ObservableObject {
             return
         }
         
-        // 4. Intentar abrir en el sistema iOS
+        // 5. Intentar abrir en el sistema iOS
         if UIApplication.shared.canOpenURL(finalURL) {
             UIApplication.shared.open(finalURL, options: [:]) { success in
                 if !success {
