@@ -14,5 +14,8 @@ targets:
           - ".github/**"
           - "project.yml"
     settings:
-     PRODUCT_BUNDLE_IDENTIFIER: com.apple.mobile.MobileHouseArrest
+      PRODUCT_BUNDLE_IDENTIFIER: com.apple.mobile.MobileHouseArrest
       CODE_SIGN_ENTITLEMENTS: NodeLockedLicenseApp.entitlements
+      INFOPLIST_FILE: Info.plist
+      ENABLE_BITCODE: NO
+      SWIFT_VERSION: "5.9"
