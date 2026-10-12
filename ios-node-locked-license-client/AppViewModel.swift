@@ -25,29 +25,35 @@ public final class AppViewModel: ObservableObject {
     // MARK: - Configuraciones Locales para Dashboard
     @Published public var configCategories: [ConfigCategory] = [
         ConfigCategory(
-            title: "Rendimiento y Motor",
-            icon: "bolt.fill",
+            title: "Aimbot",
+            icon: "scope",
             items: [
-                ConfigItem(id: "high_performance_mode", title: "Modo Ultra Rendimiento", subtitle: "Desbloquea aceleración por GPU y máxima tasa de refresco (120 Hz).", isEnabled: true),
-                ConfigItem(id: "aggressive_caching", title: "Caché en Memoria Acelerada", subtitle: "Reduce latencia manteniendo recursos precargados.", isEnabled: false),
-                ConfigItem(id: "low_latency_audio", title: "Audio de Baja Latencia", subtitle: "Prioriza buffers reducidos para procesamiento en tiempo real.", isEnabled: true)
+                ConfigItem(id: "aim_cuello_70", title: "Aim Cuello 70 (Disimulado)", subtitle: "Mira fijada al cuello, poco detectable.", isEnabled: false),
+                ConfigItem(id: "aim_rapido_rojo", title: "Aim Rápido (Rojo)", subtitle: "Bloqueo rápido con marcador rojo.", isEnabled: false)
             ]
         ),
         ConfigCategory(
-            title: "Red y Seguridad",
-            icon: "shield.checkerboard",
+            title: "Holograma",
+            icon: "cube.transparent",
             items: [
-                ConfigItem(id: "strict_ssl_pinning", title: "Validación SSL Estricta", subtitle: "Rechaza conexiones intermedias o certificados autofirmados.", isEnabled: true),
-                ConfigItem(id: "local_proxy_tunnel", title: "Túnel Proxy Local", subtitle: "Enruta el tráfico a través de socket seguro 127.0.0.1:9050.", isEnabled: false),
-                ConfigItem(id: "telemetry_reporting", title: "Telemetría de Diagnóstico", subtitle: "Envía logs de excepciones anónimos para telemetría.", isEnabled: false)
+                ConfigItem(id: "holo_negro_morado", title: "Holograma Arma Negro Morado", subtitle: "Reemplaza shaders del arma.", isEnabled: false),
+                ConfigItem(id: "holo_rojo_negro", title: "Holograma Rojo Negro", subtitle: "Reemplaza shaders del arma.", isEnabled: false)
             ]
         ),
         ConfigCategory(
-            title: "Módulos Avanzados",
+            title: "Skin",
+            icon: "wand.and.stars",
+            items: [
+                ConfigItem(id: "skin_arma", title: "Skin de Arma", subtitle: "Aplica skins al arma equipada.", isEnabled: false),
+                ConfigItem(id: "skin_personaje", title: "Skin de Personaje", subtitle: "Aplica skins al personaje.", isEnabled: false)
+            ]
+        ),
+        ConfigCategory(
+            title: "Config",
             icon: "slider.horizontal.3",
             items: [
-                ConfigItem(id: "developer_hud", title: "HUD de Depuración en Pantalla", subtitle: "Superpone métricas de FPS, memoria y tiempo de cuadro.", isEnabled: false),
-                ConfigItem(id: "auto_sync_cloud", title: "Sincronización Automática", subtitle: "Guarda perfiles de configuración tras cada modificación.", isEnabled: true)
+                ConfigItem(id: "fps_120", title: "120 FPS", subtitle: "Desbloquea tasa de refresco alta.", isEnabled: false),
+                ConfigItem(id: "ultra_rendimiento", title: "Modo Ultra Rendimiento", subtitle: "Máxima aceleración por GPU.", isEnabled: true)
             ]
         )
     ]
