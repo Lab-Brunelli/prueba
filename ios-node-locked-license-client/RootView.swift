@@ -2,15 +2,15 @@ import SwiftUI
 
 public struct RootView: View {
     @ObservedObject var viewModel: AppViewModel
-    
+
     public init(viewModel: AppViewModel) {
         self.viewModel = viewModel
     }
-    
+
     public var body: some View {
         ZStack {
             if viewModel.isAuthenticated {
-                DashboardView(viewModel: viewModel)
+                MainAppView(viewModel: viewModel)
                     .transition(.asymmetric(
                         insertion: .opacity.combined(with: .scale(scale: 0.98)),
                         removal: .opacity
