@@ -194,6 +194,28 @@ struct FreeFireView: View {
                     .foregroundStyle(.black)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
+
+                Button {
+                    viewModel.restoreOriginalMods()
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "arrow.counterclockwise.circle.fill")
+                        Text("Restaurar original (quitar mods)").fontWeight(.semibold)
+                    }
+                    .frame(maxWidth: .infinity).padding(.vertical, 14)
+                    .background(Theme.card)
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.cardStroke, lineWidth: 1))
+                    .foregroundStyle(Theme.textPrimary)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
+
+                Card {
+                    HStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.shield.fill").foregroundStyle(Theme.safeGreen)
+                        Text("Cerrá Free Fire antes de aplicar. Todo se respalda y podés volver atrás con un toque.")
+                            .font(.caption).foregroundStyle(Theme.textSecondary)
+                    }
+                }
             }
             .padding(16)
         }
