@@ -6,7 +6,7 @@ import Combine
 /// la persistencia en Keychain, el servicio de red y el estado de la UI.
 @MainActor
 public final class AppViewModel: ObservableObject {
-    
+
     // MARK: - Estado de Autenticación
     @Published public var isAuthenticated: Bool = false
     @Published public var isLoading: Bool = false
@@ -14,14 +14,18 @@ public final class AppViewModel: ObservableObject {
     @Published public var hwid: String = ""
     @Published public var licenseInfo: LicenseInfo? = nil
     @Published public var heartbeatData: HeartbeatPayload? = nil
-    
+
+    // MARK: - Estado de Sincronización de Assets
+    @Published public var isSyncing: Bool = false
+    @Published public var lastSyncSummary: String? = nil
+
     // MARK: - Alertas y Errores
     @Published public var errorMessage: String? = nil
     @Published public var showErrorAlert: Bool = false
     @Published public var showExternalAppAlert: Bool = false
     @Published public var externalAppAlertTitle: String = ""
     @Published public var externalAppAlertMessage: String = ""
-    
+
     // MARK: - Configuraciones Locales para Dashboard
     @Published public var configCategories: [ConfigCategory] = [
         ConfigCategory(
@@ -57,34 +61,37 @@ public final class AppViewModel: ObservableObject {
             ]
         )
     ]
-    
+
+    /// Subcarpeta dentro del contenedor de Free Fire donde se copian los assets.
+    /// Si tu mod necesita otra ruta, cambiala acá.
+    private let freeFireAssetsSubpath = "Documents"
+
     private let keychain: KeychainManager
     private let authService: AuthService
-    
+
     // MARK: - Inicialización
-    
+
     public init(keychain: KeychainManager = .shared, authService: AuthService = .shared) {
         self.keychain = keychain
         self.authService = authService
-        
+
         // 1. Obtener o generar HWID seguro desde Keychain
         self.hwid = keychain.getOrCreateHardwareIdentifier()
-        
+
         // 2. Recuperar última clave utilizada para conveniencia del usuario
         if let lastKey = keychain.getLastLicenseKey() {
             self.licenseKeyInput = lastKey
         }
-        
+
         // 3. Intento de inicio automático con sesión previa
         attemptAutoLogin()
     }
-    
+
     // MARK: - Flujo de Autenticación
-    
-    /// Intenta validar el token guardado en Keychain mediante un heartbeat inicial.
+
     private func attemptAutoLogin() {
         guard let savedToken = keychain.getSessionToken() else { return }
-        
+
         isLoading = true
         Task {
             do {
@@ -93,33 +100,30 @@ public final class AppViewModel: ObservableObject {
                 self.isAuthenticated = true
                 self.startHeartbeatMonitor()
             } catch {
-                // Si el token expiró o fue revocado, limpiamos sesión sin alertar de forma intrusiva
                 self.keychain.deleteSessionToken()
                 self.isAuthenticated = false
             }
             self.isLoading = false
         }
     }
-    
-    /// Ejecuta la activación manual con la clave introducida por el usuario.
+
     public func authenticate() {
         let formattedKey = licenseKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        
+
         guard !formattedKey.isEmpty else {
             presentError("Por favor, introduce una clave de licencia válida.")
             return
         }
-        
+
         isLoading = true
-        
+
         Task {
             do {
                 let result = try await authService.authenticate(licenseKey: formattedKey, hwid: hwid)
-                
-                // Guardar en Keychain
+
                 _ = keychain.saveSessionToken(result.token)
                 _ = keychain.saveLastLicenseKey(formattedKey)
-                
+
                 self.licenseInfo = result.license
                 self.isAuthenticated = true
                 self.startHeartbeatMonitor()
@@ -128,12 +132,11 @@ public final class AppViewModel: ObservableObject {
             } catch {
                 presentError("Ocurrió un error inesperado: \(error.localizedDescription)")
             }
-            
+
             self.isLoading = false
         }
     }
-    
-    /// Cierra la sesión activa y detiene la supervisión en segundo plano.
+
     public func logout() {
         authService.stopHeartbeat()
         _ = keychain.deleteSessionToken()
@@ -141,9 +144,9 @@ public final class AppViewModel: ObservableObject {
         self.heartbeatData = nil
         self.isAuthenticated = false
     }
-    
+
     // MARK: - Supervisión Continua (Heartbeat)
-    
+
     private func startHeartbeatMonitor() {
         authService.startPeriodicHeartbeat(
             intervalSeconds: 60,
@@ -160,83 +163,119 @@ public final class AppViewModel: ObservableObject {
                     self.logout()
                     self.presentError(error.localizedDescription)
                 default:
-                    // Error transitorio de red: loguear sin expulsar al usuario de inmediato
                     NSLog("⚠️ Heartbeat transitorio fallido: \(error.localizedDescription)")
                 }
             }
         )
     }
-    
-    // MARK: - Lanzamiento de Aplicación Externa vía URL Scheme
-    
-    /// Empaqueta la configuración activa, accede al contenedor del juego y lanza la app externa.
+
+    // MARK: - Aplicar configuración, copiar assets y lanzar
+
+    /// Punto de entrada desde la UI. Copia los assets de los mods activados al
+    /// contenedor de Free Fire y luego intenta lanzar la app externa.
     public func applyAndLaunchExternalApp(urlScheme: String = "gameclient://") {
-        // 1. Recopilar valores de configuración activados
+        guard !isSyncing else { return }
+        Task { await applyAndSync(urlScheme: urlScheme) }
+    }
+
+    private func applyAndSync(urlScheme: String) async {
+        isSyncing = true
+        defer { isSyncing = false }
+
+        // 1. Recopilar flags activos
         var activeFlags: [String: Bool] = [:]
         for category in configCategories {
-            for item in category.items {
-                activeFlags[item.id] = item.isEnabled
+            for item in category.items { activeFlags[item.id] = item.isEnabled }
+        }
+
+        // 2. Acceder al contenedor de Free Fire (MobileHouseArrest)
+        guard let ffContainer = HouseArrestManager.shared.containerURL(forBundleID: HouseArrestManager.freeFireBundleID) else {
+            presentError("No se pudo acceder al contenedor de Free Fire.\n\nVerificá:\n• Que Free Fire esté instalado.\n• Que el certificado soporte MobileHouseArrest (Bundle ID com.apple.mobile.MobileHouseArrest).")
+            return
+        }
+        NSLog("✅ Contenedor de Free Fire accesible: \(ffContainer.path)")
+
+        // 3. Copiar assets de cada mod activado que exista en el bundle
+        let destination = ffContainer.appendingPathComponent(freeFireAssetsSubpath)
+        let engine = AssetSyncEngine.shared
+        var copiedMods: [String] = []
+        var missingMods: [String] = []
+
+        for category in configCategories {
+            for item in category.items where item.isEnabled {
+                guard let source = Bundle.main.url(forResource: "FFAssets/\(item.id)", withExtension: nil) else {
+                    missingMods.append(item.title)
+                    continue
+                }
+                do {
+                    let result = try await engine.synchronize(from: source, to: destination)
+                    copiedMods.append("\(item.title) (\(result.copiedFilesCount) archivos)")
+                    NSLog("✅ Sincronizado \(item.id) -> \(destination.path)")
+                } catch {
+                    NSLog("⚠️ Error sincronizando \(item.id): \(error.localizedDescription)")
+                    missingMods.append(item.title)
+                }
             }
         }
-        
-        // 2. Intentar acceder al contenedor de Free Fire (MobileHouseArrest)
-        if let ffContainer = HouseArrestManager.shared.containerURL(forBundleID: HouseArrestManager.freeFireBundleID) {
-            NSLog("✅ Contenedor de Free Fire accesible: \(ffContainer.path)")
-            // Acá más adelante se copian los archivos del holograma con AssetSyncEngine
-        } else {
-            NSLog("❌ No se pudo acceder al contenedor de Free Fire (revisá Bundle ID y certificado)")
+
+        // 4. Resumen
+        var summary = "Mods aplicados:\n"
+        summary += copiedMods.isEmpty ? "• (ninguno con archivos)\n" : copiedMods.map { "• \($0)" }.joined(separator: "\n") + "\n"
+        if !missingMods.isEmpty {
+            summary += "\nSin archivos aún (pendiente de assets):\n"
+            summary += missingMods.map { "• \($0)" }.joined(separator: "\n")
         }
-        
-        // 3. Serializar a JSON
+        self.lastSyncSummary = summary
+        NSLog("📦 \(summary)")
+
+        // 5. Lanzar app externa vía URL scheme
+        launchExternal(urlScheme: urlScheme, activeFlags: activeFlags)
+    }
+
+    private func launchExternal(urlScheme: String, activeFlags: [String: Bool]) {
         guard let jsonData = try? JSONSerialization.data(withJSONObject: activeFlags, options: []),
               let jsonString = String(data: jsonData, encoding: .utf8) else {
             presentError("Error al codificar las opciones de configuración.")
             return
         }
-        
-        // 4. Construir URL con parámetros
+
         guard var components = URLComponents(string: urlScheme) else {
-            presentError("El formato de URL Scheme es inválido.")
+            presentExternalAppInfo(title: "Configuración Aplicada", message: lastSyncSummary ?? "Listo.")
             return
         }
-        
+
         components.queryItems = [
             URLQueryItem(name: "config", value: jsonString),
             URLQueryItem(name: "hwid", value: hwid),
             URLQueryItem(name: "license", value: licenseInfo?.license_key ?? licenseKeyInput)
         ]
-        
+
         guard let finalURL = components.url else {
-            presentError("No se pudo construir la URL de redirección.")
+            presentExternalAppInfo(title: "Configuración Aplicada", message: lastSyncSummary ?? "Listo.")
             return
         }
-        
-        // 5. Intentar abrir en el sistema iOS
+
         if UIApplication.shared.canOpenURL(finalURL) {
             UIApplication.shared.open(finalURL, options: [:]) { success in
                 if !success {
-                    self.presentExternalAppInfo(
-                        title: "Error al Lanzar",
-                        message: "El sistema no pudo iniciar la aplicación externa asociada a '\(urlScheme)'."
-                    )
+                    self.presentExternalAppInfo(title: "Assets Copiados", message: self.lastSyncSummary ?? "Listo.")
                 }
             }
         } else {
-            // Si la app externa no está instalada o el URL Scheme no está en Info.plist (LSApplicationQueriesSchemes)
-            self.presentExternalAppInfo(
-                title: "Configuración Aplicada Localmente",
-                message: "Los interruptores se han guardado con éxito.\n\nLa aplicación externa con esquema '\(urlScheme)' no se encuentra instalada en este dispositivo.\n\nPayload generado:\n\(finalURL.absoluteString)"
+            presentExternalAppInfo(
+                title: "Assets Copiados",
+                message: (lastSyncSummary ?? "Listo.") + "\n\n(No se pudo abrir '\(urlScheme)' — abrí Free Fire manualmente.)"
             )
         }
     }
-    
+
     // MARK: - Helpers de Alerta
-    
+
     private func presentError(_ message: String) {
         self.errorMessage = message
         self.showErrorAlert = true
     }
-    
+
     private func presentExternalAppInfo(title: String, message: String) {
         self.externalAppAlertTitle = title
         self.externalAppAlertMessage = message
