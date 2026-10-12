@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum AppTab: Hashable { case home, freefire, profile, support }
+enum AppTab: Hashable { case home, freefire, explorer, profile, support }
 
 public struct MainAppView: View {
     @ObservedObject var viewModel: AppViewModel
@@ -16,6 +16,7 @@ public struct MainAppView: View {
                 switch tab {
                 case .home: HomeView(viewModel: viewModel)
                 case .freefire: FreeFireView(viewModel: viewModel, selected: $selectedCategory)
+                case .explorer: FFExplorerView()
                 case .profile: ProfileView(viewModel: viewModel)
                 case .support: SupportView()
                 }
@@ -38,6 +39,7 @@ struct BottomBar: View {
         HStack {
             item(.home, "Inicio", "house.fill")
             item(.freefire, "Free Fire", "gamecontroller.fill")
+            item(.explorer, "Explorar", "folder.fill")
             item(.profile, "Perfil", "person.fill")
             item(.support, "Soporte", "headphones")
         }
