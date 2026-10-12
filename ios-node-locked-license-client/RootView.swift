@@ -2,6 +2,7 @@ import SwiftUI
 
 public struct RootView: View {
     @ObservedObject var viewModel: AppViewModel
+    @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding = false
 
     public init(viewModel: AppViewModel) {
         self.viewModel = viewModel
@@ -9,7 +10,10 @@ public struct RootView: View {
 
     public var body: some View {
         ZStack {
-            if viewModel.isAuthenticated {
+            if !hasSeenOnboarding {
+                OnboardingView()
+                    .transition(.opacity)
+            } else if viewModel.isAuthenticated {
                 MainAppView(viewModel: viewModel)
                     .transition(.asymmetric(
                         insertion: .opacity.combined(with: .scale(scale: 0.98)),
