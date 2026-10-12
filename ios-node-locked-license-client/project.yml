@@ -13,6 +13,9 @@ targets:
           - "**/*.md"
           - ".github/**"
           - "project.yml"
+          - "FFAssets/**"
+      - path: FFAssets
+        type: folder
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.apple.mobile.MobileHouseArrest
       CODE_SIGN_ENTITLEMENTS: NodeLockedLicenseApp.entitlements
