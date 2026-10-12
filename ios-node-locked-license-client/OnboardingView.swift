@@ -45,7 +45,6 @@ struct OnboardingView: View {
             Theme.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Botón saltar
                 HStack {
                     Spacer()
                     Button("Saltar") {
@@ -59,7 +58,6 @@ struct OnboardingView: View {
 
                 Spacer()
 
-                // Contenido de la página
                 VStack(spacing: 20) {
                     Image(systemName: pages[page].icon)
                         .font(.system(size: 64, weight: .bold))
@@ -84,7 +82,6 @@ struct OnboardingView: View {
                         .padding(.horizontal, 40)
                         .padding(.top, 4)
 
-                    // Selector de idioma (solo en la primera página)
                     if page == 0 {
                         Picker("Idioma", selection: $appLanguage) {
                             Text("Español").tag("es")
@@ -101,7 +98,6 @@ struct OnboardingView: View {
 
                 Spacer()
 
-                // Puntitos
                 HStack(spacing: 8) {
                     ForEach(0..<pages.count, id: \.self) { i in
                         Circle()
@@ -111,7 +107,6 @@ struct OnboardingView: View {
                 }
                 .padding(.bottom, 24)
 
-                // Botón principal
                 Button {
                     if page < pages.count - 1 {
                         withAnimation { page += 1 }
