@@ -53,10 +53,10 @@ jobs:
           mkdir -p build/Payload
           cp -r build/NodeLockedLicenseApp.xcarchive/Products/Applications/NodeLockedLicenseApp.app build/Payload/
           cd build
-          zip -r NodeLockedLicenseApp.ipa Payload
+          zip -r FX.ipa Payload
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NodeLockedLicenseApp-IPA
-          path: ios-node-locked-license-client/build/NodeLockedLicenseApp.ipa
+          name: FX-IPA
+          path: ios-node-locked-license-client/build/FX.ipa
