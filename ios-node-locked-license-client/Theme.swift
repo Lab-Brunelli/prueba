@@ -9,6 +9,7 @@ enum Theme {
     static let textSecondary = Color(hex: "#8E8E93")
     static let safeGreen = Color(hex: "#2ECC71")
     static let danger = Color(hex: "#FF3B30")
+    static let accent = Color(hex: "#7C5CFF")
 }
 
 extension Color {
