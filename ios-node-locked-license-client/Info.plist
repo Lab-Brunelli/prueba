@@ -4,8 +4,12 @@
 <dict>
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
+    <key>CFBundleDisplayName</key>
+    <string>FX</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
     <key>CFBundleInfoDictionaryVersion</key>
@@ -21,21 +25,12 @@
     <key>LSRequiresIPhoneOS</key>
     <true/>
 
-    <!-- 
-      Permiso indispensable para consultar y lanzar aplicaciones de terceros mediante URL Scheme.
-      A partir de iOS 9+, UIApplication.shared.canOpenURL() devolverá siempre false si el esquema
-      no está registrado explícitamente en esta lista de consultas.
-    -->
     <key>LSApplicationQueriesSchemes</key>
     <array>
         <string>targetapp</string>
         <string>gameclient</string>
     </array>
 
-    <!-- 
-      Configuración de seguridad de red para permitir pruebas locales contra http://localhost:3000
-      o servidores de desarrollo sin certificado SSL público durante el desarrollo.
-    -->
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsLocalNetworking</key>
