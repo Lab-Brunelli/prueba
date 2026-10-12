@@ -2,7 +2,7 @@ name: NodeLockedLicenseApp
 options:
   bundleIdPrefix: com.company
   deploymentTarget:
-    iOS: "16.0"
+    iOS: "17.0"
 targets:
   NodeLockedLicenseApp:
     type: application
