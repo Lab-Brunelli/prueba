@@ -9,6 +9,10 @@ final class ModInstaller {
     private let backupFolder = "NLBackup"
     private let manifestFile = "manifest.json"
 
+    /// Si está seteado, los backups viven ACÁ (fuera del contenedor del juego)
+    /// para que el contenedor de Free Fire quede 100% limpio = más indetectable.
+    var externalBackupRoot: URL?
+
     private init() {}
 
     struct Entry: Codable {
@@ -46,7 +50,8 @@ final class ModInstaller {
     // MARK: - Rutas internas
 
     private func backupRoot(in destination: URL) -> URL {
-        destination.appendingPathComponent(backupFolder)
+        if let e = externalBackupRoot { return e }
+        return destination.appendingPathComponent(backupFolder)
     }
     private func manifestURL(in destination: URL) -> URL {
         backupRoot(in: destination).appendingPathComponent(manifestFile)
@@ -79,13 +84,11 @@ final class ModInstaller {
             let srcURL = source.appendingPathComponent(rel)
             let dstURL = destination.appendingPathComponent(rel)
 
-            // 1) Si ya es idéntico, no lo tocamos (idempotente)
             if fm.fileExists(atPath: dstURL.path), sameContent(srcURL, dstURL) {
                 report.skipped += 1
                 continue
             }
 
-            // 2) Backup del original SOLO la primera vez
             if manifest.entries[rel] == nil {
                 if fm.fileExists(atPath: dstURL.path) {
                     let bak = backupRoot(in: destination).appendingPathComponent(rel)
@@ -100,12 +103,10 @@ final class ModInstaller {
                 }
             }
 
-            // 3) Copia atómica
             try? fm.createDirectory(at: dstURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             do { try atomicCopy(srcURL, to: dstURL) }
             catch { throw InstallError.writeFailed(rel, error) }
 
-            // 4) Verificar; si falla, revertir este archivo
             if !sameContent(srcURL, dstURL) {
                 if let e = manifest.entries[rel], e.hadOriginal {
                     let bak = backupRoot(in: destination).appendingPathComponent(rel)
@@ -122,7 +123,7 @@ final class ModInstaller {
         return report
     }
 
-    // MARK: - Restaurar todo al original
+    // MARK: - Restaurar todo al original (SEGURO CON EL JUEGO ABIERTO)
 
     func restoreAll(in destination: URL) throws -> RestoreReport {
         let manifest = loadManifest(in: destination)
@@ -151,8 +152,6 @@ final class ModInstaller {
 
     // MARK: - Helpers
 
-    /// Recorre el mod SIN skipear ocultos, pero ignorando .gitkeep / .DS_Store.
-    /// Conserva la ruta relativa (para que el mod espeje contentcache/... del juego).
     private func relativeFiles(in root: URL) -> [String] {
         var out: [String] = []
         guard let en = fm.enumerator(at: root,
