@@ -13,9 +13,10 @@ public final class AppViewModel: ObservableObject {
     @Published public var licenseInfo: LicenseInfo? = nil
     @Published public var heartbeatData: HeartbeatPayload? = nil
 
-    // MARK: - Estado de Sincronización de Assets
+    // MARK: - Estado de la Sesión de Mods
     @Published public var isSyncing: Bool = false
     @Published public var isRestoring: Bool = false
+    @Published public var modsInstalled: Bool = ModSession.shared.isInstalled
     @Published public var lastSyncSummary: String? = nil
     @Published public var lastRestoreSummary: String? = nil
 
@@ -57,7 +58,15 @@ public final class AppViewModel: ObservableObject {
             icon: "slider.horizontal.3",
             items: [
                 ConfigItem(id: "fps_120", title: "120 FPS", subtitle: "Desbloquea tasa de refresco alta.", isEnabled: false),
+                ConfigItem(id: "fps_144", title: "144 FPS", subtitle: "Desbloquea tasa de refresco alta.", isEnabled: false),
                 ConfigItem(id: "ultra_rendimiento", title: "Modo Ultra Rendimiento", subtitle: "Máxima aceleración por GPU.", isEnabled: true)
+            ]
+        ),
+        ConfigCategory(
+            title: "Sistema",
+            icon: "wrench.and.screwdriver",
+            items: [
+                ConfigItem(id: "_selftest", title: "Self-Test (archivo real)", subtitle: "Valida el pipeline completo sin assets del juego.", isEnabled: false)
             ]
         )
     ]
@@ -146,43 +155,50 @@ public final class AppViewModel: ObservableObject {
         )
     }
 
-    // MARK: - Aplicar mods (seguro) y lanzar
+    // MARK: - Ciclo de vida
 
-    public func applyAndLaunchExternalApp(urlScheme: String = "gameclient://") {
-        guard !isSyncing, !isRestoring else { return }
-        Task { await applyAndSync(urlScheme: urlScheme) }
+    /// Llamar cuando la app vuelve a primer plano: re-activa el acceso al contenedor
+    /// para que DESACTIVAR siga funcionando aunque iOS haya soltado la extensión.
+    public func onForeground() {
+        guard modsInstalled else { return }
+        _ = HouseArrestManager.shared.reattach()
     }
 
-    private func applyAndSync(urlScheme: String) async {
+    // MARK: - ACTIVAR (con el juego CERRADO)
+
+    public func activateMods(launchAfter: Bool = false, urlScheme: String = "gameclient://") {
+        guard !isSyncing, !isRestoring else { return }
+        Task { await activate(launchAfter: launchAfter, urlScheme: urlScheme) }
+    }
+
+    private func activate(launchAfter: Bool, urlScheme: String) async {
         isSyncing = true
         defer { isSyncing = false }
-
-        var activeFlags: [String: Bool] = [:]
-        for category in configCategories {
-            for item in category.items { activeFlags[item.id] = item.isEnabled }
-        }
 
         guard let ffContainer = HouseArrestManager.shared.containerURL(forBundleID: HouseArrestManager.freeFireBundleID) else {
             presentError("No se pudo acceder al contenedor de Free Fire.\n\nVerificá:\n• Que Free Fire esté instalado.\n• Que el certificado soporte MobileHouseArrest.")
             return
         }
-        NSLog("✅ Contenedor de Free Fire accesible: \(ffContainer.path)")
+
+        // Backups FUERA del contenedor del juego = contenedor 100% limpio
+        ModInstaller.shared.externalBackupRoot = ModSession.shared.externalBackupRoot
 
         let destination = ffContainer.appendingPathComponent(freeFireAssetsSubpath)
+        try? FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+
         let installer = ModInstaller.shared
         var done: [String] = []
         var missing: [String] = []
 
         for category in configCategories {
             for item in category.items where item.isEnabled {
-                guard let source = Bundle.main.url(forResource: "FFAssets/\(item.id)", withExtension: nil) else {
-                    missing.append(item.title)
+                guard let source = ModsLibrary.shared.sourceURL(for: item.id) else {
+                    missing.append("\(item.title) (sin carpeta en Documents/Mods/\(item.id))")
                     continue
                 }
                 do {
                     let rep = try installer.install(modID: item.id, from: source, into: destination)
                     done.append("\(item.title) (+\(rep.installedFiles) nuevos, \(rep.skipped) ya ok)")
-                    NSLog("✅ Instalado \(item.id) -> \(destination.path)")
                 } catch {
                     NSLog("⚠️ Error instalando \(item.id): \(error.localizedDescription)")
                     missing.append("\(item.title) (\(error.localizedDescription))")
@@ -190,70 +206,62 @@ public final class AppViewModel: ObservableObject {
             }
         }
 
-        var summary = "Mods aplicados (seguro, con backup):\n"
-        summary += done.isEmpty ? "• (ninguno tenía archivos aún)\n" : done.map { "• \($0)" }.joined(separator: "\n") + "\n"
+        ModSession.shared.isInstalled = true
+        self.modsInstalled = true
+
+        var summary = "🟢 MODS ACTIVADOS\n"
+        summary += done.isEmpty ? "• (ningún mod tenía archivos)\n" : done.map { "• \($0)" }.joined(separator: "\n") + "\n"
         if !missing.isEmpty {
             summary += "\nNo aplicados:\n" + missing.map { "• \($0)" }.joined(separator: "\n")
         }
-        summary += "\n\n💡 Tip: aplicá con Free Fire CERRADO."
+        summary += "\n\n➡️ Abrí Free Fire y esperá a llegar al lobby."
+        summary += "\n➡️ Después volvé acá y tocá DESACTIVAR."
         self.lastSyncSummary = summary
 
-        launchExternal(urlScheme: urlScheme, activeFlags: activeFlags)
+        if launchAfter { openFreeFire(urlScheme: urlScheme) }
     }
 
-    // MARK: - Restaurar original (quitar mods)
+    // MARK: - DESACTIVAR (con el juego ABIERTO y ya cargado)
 
-    public func restoreOriginalMods() {
+    public func deactivateMods() {
         guard !isSyncing, !isRestoring else { return }
-        Task { await restore() }
+        Task { await deactivate() }
     }
 
-    private func restore() async {
+    private func deactivate() async {
         isRestoring = true
         defer { isRestoring = false }
 
+        // Re-asegurar acceso: puede haber vuelto de background
         guard let ffContainer = HouseArrestManager.shared.containerURL(forBundleID: HouseArrestManager.freeFireBundleID) else {
             presentError("No se pudo acceder al contenedor de Free Fire para restaurar.")
             return
         }
+        ModInstaller.shared.externalBackupRoot = ModSession.shared.externalBackupRoot
+
         let destination = ffContainer.appendingPathComponent(freeFireAssetsSubpath)
         do {
             let rep = try ModInstaller.shared.restoreAll(in: destination)
-            let msg = "Restaurado a como estaba:\n• \(rep.restoredOriginals) archivos originales devueltos\n• \(rep.removedAddedFiles) archivos añadidos eliminados"
+            ModSession.shared.isInstalled = false
+            self.modsInstalled = false
+            let msg = "🔴 DESACTIVADO — disco restaurado a original.\n• \(rep.restoredOriginals) originales devueltos\n• \(rep.removedAddedFiles) archivos añadidos borrados\n\n✅ El mod SIGUE activo en el juego (está en RAM).\n✅ Disco limpio = indetectable."
             self.lastRestoreSummary = msg
-            presentExternalAppInfo(title: "Restaurado", message: msg)
+            presentExternalAppInfo(title: "Desactivado", message: msg)
         } catch {
             presentError("Error al restaurar: \(error.localizedDescription)")
         }
     }
 
-    private func launchExternal(urlScheme: String, activeFlags: [String: Bool]) {
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: activeFlags, options: []),
-              let jsonString = String(data: jsonData, encoding: .utf8) else {
-            presentExternalAppInfo(title: "Configuración Aplicada", message: lastSyncSummary ?? "Listo.")
-            return
-        }
-        guard var components = URLComponents(string: urlScheme) else {
-            presentExternalAppInfo(title: "Configuración Aplicada", message: lastSyncSummary ?? "Listo.")
-            return
-        }
-        components.queryItems = [
-            URLQueryItem(name: "config", value: jsonString),
-            URLQueryItem(name: "hwid", value: hwid),
-            URLQueryItem(name: "license", value: licenseInfo?.license_key ?? licenseKeyInput)
-        ]
-        guard let finalURL = components.url else {
-            presentExternalAppInfo(title: "Configuración Aplicada", message: lastSyncSummary ?? "Listo.")
-            return
-        }
-        if UIApplication.shared.canOpenURL(finalURL) {
-            UIApplication.shared.open(finalURL, options: [:]) { success in
-                if !success { self.presentExternalAppInfo(title: "Assets Copiados", message: self.lastSyncSummary ?? "Listo.") }
-            }
+    // MARK: - Abrir Free Fire
+
+    public func openFreeFire(urlScheme: String = "gameclient://") {
+        guard let url = URL(string: urlScheme) else { return }
+        if UIApplication.shared.canOpenURL(url) {
+            UIApplication.shared.open(url, options: [:], completionHandler: nil)
         } else {
             presentExternalAppInfo(
-                title: "Assets Copiados",
-                message: (lastSyncSummary ?? "Listo.") + "\n\n(No se pudo abrir '\(urlScheme)' — abrí Free Fire manualmente.)"
+                title: "Abrí Free Fire",
+                message: "No se pudo abrir '\(urlScheme)' automáticamente. Abrí Free Fire a mano."
             )
         }
     }
