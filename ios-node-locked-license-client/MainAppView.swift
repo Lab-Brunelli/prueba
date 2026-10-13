@@ -1,317 +1,280 @@
+import Foundation
 import SwiftUI
+import Combine
 
-enum AppTab: Hashable { case home, freefire, explorer, profile, support }
+@MainActor
+public final class AppViewModel: ObservableObject {
 
-public struct MainAppView: View {
-    @ObservedObject var viewModel: AppViewModel
-    @State private var tab: AppTab = .home
-    @State private var selectedCategory: Int = 0
+    // MARK: - Estado de Autenticación
+    @Published public var isAuthenticated: Bool = false
+    @Published public var isLoading: Bool = false
+    @Published public var licenseKeyInput: String = ""
+    @Published public var hwid: String = ""
+    @Published public var licenseInfo: LicenseInfo? = nil
+    @Published public var heartbeatData: HeartbeatPayload? = nil
 
-    public init(viewModel: AppViewModel) { self.viewModel = viewModel }
+    // MARK: - Estado de Sincronización de Assets
+    @Published public var isSyncing: Bool = false
+    @Published public var isRestoring: Bool = false
+    @Published public var lastSyncSummary: String? = nil
+    @Published public var lastRestoreSummary: String? = nil
 
-    public var body: some View {
-        ZStack(alignment: .bottom) {
-            Theme.bg.ignoresSafeArea()
-            Group {
-                switch tab {
-                case .home: HomeView(viewModel: viewModel)
-                case .freefire: FreeFireView(viewModel: viewModel, selected: $selectedCategory)
-                case .explorer: FFExplorerView()
-                case .profile: ProfileView(viewModel: viewModel)
-                case .support: SupportView()
+    // MARK: - Alertas y Errores
+    @Published public var errorMessage: String? = nil
+    @Published public var showErrorAlert: Bool = false
+    @Published public var showExternalAppAlert: Bool = false
+    @Published public var externalAppAlertTitle: String = ""
+    @Published public var externalAppAlertMessage: String = ""
+
+    // MARK: - Configuraciones Locales para Dashboard
+    @Published public var configCategories: [ConfigCategory] = [
+        ConfigCategory(
+            title: "Aimbot",
+            icon: "scope",
+            items: [
+                ConfigItem(id: "aim_cuello_70", title: "Aim Cuello 70 (Disimulado)", subtitle: "Mira fijada al cuello, poco detectable.", isEnabled: false),
+                ConfigItem(id: "aim_rapido_rojo", title: "Aim Rápido (Rojo)", subtitle: "Bloqueo rápido con marcador rojo.", isEnabled: false)
+            ]
+        ),
+        ConfigCategory(
+            title: "Holograma",
+            icon: "cube.transparent",
+            items: [
+                ConfigItem(id: "holo_negro_morado", title: "Holograma Arma Negro Morado", subtitle: "Reemplaza shaders del arma.", isEnabled: false),
+                ConfigItem(id: "holo_rojo_negro", title: "Holograma Rojo Negro", subtitle: "Reemplaza shaders del arma.", isEnabled: false)
+            ]
+        ),
+        ConfigCategory(
+            title: "Skin",
+            icon: "wand.and.stars",
+            items: [
+                ConfigItem(id: "skin_arma", title: "Skin de Arma", subtitle: "Aplica skins al arma equipada.", isEnabled: false),
+                ConfigItem(id: "skin_personaje", title: "Skin de Personaje", subtitle: "Aplica skins al personaje.", isEnabled: false)
+            ]
+        ),
+        ConfigCategory(
+            title: "Config",
+            icon: "slider.horizontal.3",
+            items: [
+                ConfigItem(id: "fps_120", title: "120 FPS", subtitle: "Desbloquea tasa de refresco alta.", isEnabled: false),
+                ConfigItem(id: "fps_144", title: "144 FPS", subtitle: "Desbloquea tasa de refresco alta.", isEnabled: false),
+                ConfigItem(id: "ultra_rendimiento", title: "Modo Ultra Rendimiento", subtitle: "Máxima aceleración por GPU.", isEnabled: true)
+            ]
+        ),
+        ConfigCategory(
+            title: "Sistema",
+            icon: "wrench.and.screwdriver",
+            items: [
+                ConfigItem(id: "_selftest", title: "Self-Test (archivo real)", subtitle: "Valida el pipeline completo sin assets del juego.", isEnabled: false)
+            ]
+        )
+    ]
+
+    private let freeFireAssetsSubpath = "Documents"
+
+    private let keychain: KeychainManager
+    private let authService: AuthService
+
+    public init(keychain: KeychainManager = .shared, authService: AuthService = .shared) {
+        self.keychain = keychain
+        self.authService = authService
+        self.hwid = keychain.getOrCreateHardwareIdentifier()
+        if let lastKey = keychain.getLastLicenseKey() {
+            self.licenseKeyInput = lastKey
+        }
+        attemptAutoLogin()
+    }
+
+    // MARK: - Autenticación
+
+    private func attemptAutoLogin() {
+        guard let savedToken = keychain.getSessionToken() else { return }
+        isLoading = true
+        Task {
+            do {
+                let heartbeat = try await authService.sendHeartbeat(token: savedToken)
+                self.heartbeatData = heartbeat
+                self.isAuthenticated = true
+                self.startHeartbeatMonitor()
+            } catch {
+                _ = self.keychain.deleteSessionToken()
+                self.isAuthenticated = false
+            }
+            self.isLoading = false
+        }
+    }
+
+    public func authenticate() {
+        let formattedKey = licenseKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard !formattedKey.isEmpty else {
+            presentError("Por favor, introduce una clave de licencia válida.")
+            return
+        }
+        isLoading = true
+        Task {
+            do {
+                let result = try await authService.authenticate(licenseKey: formattedKey, hwid: hwid)
+                _ = keychain.saveSessionToken(result.token)
+                _ = keychain.saveLastLicenseKey(formattedKey)
+                self.licenseInfo = result.license
+                self.isAuthenticated = true
+                self.startHeartbeatMonitor()
+            } catch let error as AuthError {
+                presentError(error.localizedDescription)
+            } catch {
+                presentError("Ocurrió un error inesperado: \(error.localizedDescription)")
+            }
+            self.isLoading = false
+        }
+    }
+
+    public func logout() {
+        authService.stopHeartbeat()
+        _ = keychain.deleteSessionToken()
+        self.licenseInfo = nil
+        self.heartbeatData = nil
+        self.isAuthenticated = false
+    }
+
+    private func startHeartbeatMonitor() {
+        authService.startPeriodicHeartbeat(
+            intervalSeconds: 60,
+            tokenProvider: { [weak self] in self?.keychain.getSessionToken() },
+            onUpdate: { [weak self] heartbeat in self?.heartbeatData = heartbeat },
+            onFailure: { [weak self] error in
+                guard let self = self else { return }
+                switch error {
+                case .licenseExpired, .licenseBanned, .hwidMismatch, .unauthorized:
+                    self.logout()
+                    self.presentError(error.localizedDescription)
+                default:
+                    NSLog("⚠️ Heartbeat transitorio fallido: \(error.localizedDescription)")
                 }
             }
-            .padding(.bottom, 80)
-            BottomBar(tab: $tab)
-        }
-        .preferredColorScheme(.dark)
-        .alert(viewModel.externalAppAlertTitle, isPresented: $viewModel.showExternalAppAlert) {
-            Button("Aceptar", role: .cancel) {}
-        } message: {
-            Text(viewModel.externalAppAlertMessage)
-        }
+        )
     }
-}
 
-struct BottomBar: View {
-    @Binding var tab: AppTab
-    var body: some View {
-        HStack {
-            item(.home, "Inicio", "house.fill")
-            item(.freefire, "Free Fire", "gamecontroller.fill")
-            item(.explorer, "Explorar", "folder.fill")
-            item(.profile, "Perfil", "person.fill")
-            item(.support, "Soporte", "headphones")
-        }
-        .padding(.horizontal, 10).padding(.vertical, 10)
-        .background(Theme.card)
-        .overlay(RoundedRectangle(cornerRadius: 24).stroke(Theme.cardStroke, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 24))
-        .padding(.horizontal, 12).padding(.bottom, 4)
+    // MARK: - Aplicar mods (seguro) y lanzar
+
+    public func applyAndLaunchExternalApp(urlScheme: String = "gameclient://") {
+        guard !isSyncing, !isRestoring else { return }
+        Task { await applyAndSync(urlScheme: urlScheme) }
     }
-    func item(_ t: AppTab, _ label: String, _ icon: String) -> some View {
-        Button { withAnimation(.spring(response: 0.3)) { tab = t } } label: {
-            VStack(spacing: 4) {
-                Image(systemName: icon).font(.system(size: 18))
-                Text(label).font(.caption2.weight(.semibold))
-            }
-            .foregroundStyle(tab == t ? Theme.textPrimary : Theme.textSecondary)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-            .background(tab == t ? Theme.pill : .clear)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+
+    private func applyAndSync(urlScheme: String) async {
+        isSyncing = true
+        defer { isSyncing = false }
+
+        var activeFlags: [String: Bool] = [:]
+        for category in configCategories {
+            for item in category.items { activeFlags[item.id] = item.isEnabled }
         }
-    }
-}
 
-// MARK: - Inicio
-struct HomeView: View {
-    @ObservedObject var viewModel: AppViewModel
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                HStack {
-                    Text("Inicio").font(.headline).foregroundStyle(Theme.textPrimary)
-                    Spacer()
-                    IconBox(system: "terminal")
-                    IconBox(system: "gearshape")
-                }
-                Card {
-                    HStack(spacing: 14) {
-                        RoundedRectangle(cornerRadius: 12).fill(Theme.pill)
-                            .frame(width: 48, height: 48)
-                            .overlay(Image(systemName: "xmark").font(.headline).foregroundStyle(.white))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Panel").font(.headline).foregroundStyle(.white)
-                            Text("Tu iPhone, listo.").font(.caption).foregroundStyle(Theme.textSecondary)
-                            Text("Versión 5.0.1").font(.caption2).foregroundStyle(Theme.textSecondary)
-                        }
-                        Spacer()
-                    }
-                }
-                HStack {
-                    Text("Estado del dispositivo").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textSecondary)
-                    Spacer()
-                    HStack(spacing: 6) {
-                        Circle().fill(Theme.safeGreen).frame(width: 8, height: 8)
-                        Text("Activo").font(.caption).foregroundStyle(Theme.safeGreen)
-                    }
-                }
-                Card {
-                    VStack(spacing: 12) {
-                        infoRow("iphone", "Modelo de hardware", deviceModel)
-                        Divider().background(Theme.cardStroke)
-                        infoRow("gearshape", "iOS Version", UIDevice.current.systemVersion)
-                        Divider().background(Theme.cardStroke)
-                        infoRow("checkmark.shield.fill", "Compatibilidad del exploit", "Compatible")
-                    }
-                }
-            }
-            .padding(16)
+        guard let ffContainer = HouseArrestManager.shared.containerURL(forBundleID: HouseArrestManager.freeFireBundleID) else {
+            presentError("No se pudo acceder al contenedor de Free Fire.\n\nVerificá:\n• Que Free Fire esté instalado.\n• Que el certificado soporte MobileHouseArrest.")
+            return
         }
-    }
-    func infoRow(_ icon: String, _ title: String, _ value: String) -> some View {
-        HStack(spacing: 12) {
-            IconBox(system: icon)
-            Text(title).font(.subheadline).foregroundStyle(Theme.textPrimary)
-            Spacer()
-            Text(value).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textSecondary)
-        }
-    }
-    var deviceModel: String {
-        var sys = utsname(); uname(&sys)
-        let m = Mirror(reflecting: sys.machine)
-        return m.children.reduce("") { id, e in
-            guard let v = e.value as? Int8, v != 0 else { return id }
-            return id + String(UnicodeScalar(UInt8(v)))
-        }
-    }
-}
+        NSLog("✅ Contenedor de Free Fire accesible: \(ffContainer.path)")
 
-// MARK: - Free Fire
-struct FreeFireView: View {
-    @ObservedObject var viewModel: AppViewModel
-    @Binding var selected: Int
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                Card {
-                    HStack(spacing: 12) {
-                        RoundedRectangle(cornerRadius: 12).fill(Theme.pill)
-                            .frame(width: 44, height: 44)
-                            .overlay(Image(systemName: "flame.fill").foregroundStyle(.orange))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Free Fire").font(.headline).foregroundStyle(.white)
-                            Text("NORMAL").font(.caption2.weight(.bold)).foregroundStyle(Theme.textSecondary)
-                        }
-                        Spacer()
-                        Badge(text: "Seguro")
-                    }
-                }
+        let destination = ffContainer.appendingPathComponent(freeFireAssetsSubpath)
+        try? FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
 
-                if !viewModel.configCategories.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(viewModel.configCategories.indices, id: \.self) { i in
-                                Button { selected = i } label: {
-                                    Text(viewModel.configCategories[i].title)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(selected == i ? .black : Theme.textSecondary)
-                                        .padding(.horizontal, 16).padding(.vertical, 8)
-                                        .background(selected == i ? Color.white : Theme.card)
-                                        .clipShape(Capsule())
-                                }
-                            }
-                        }
-                    }
+        let installer = ModInstaller.shared
+        var done: [String] = []
+        var missing: [String] = []
 
-                    let cat = viewModel.configCategories[min(selected, viewModel.configCategories.count - 1)]
-                    ForEach(cat.items) { item in
-                        ToggleRow(
-                            title: item.title,
-                            subtitle: item.subtitle,
-                            icon: cat.icon,
-                            isOn: Binding(
-                                get: { item.isEnabled },
-                                set: { newVal in
-                                    if let ci = viewModel.configCategories.firstIndex(where: { $0.id == cat.id }),
-                                       let ii = viewModel.configCategories[ci].items.firstIndex(where: { $0.id == item.id }) {
-                                        viewModel.configCategories[ci].items[ii].isEnabled = newVal
-                                    }
-                                }
-                            )
-                        )
-                    }
+        for category in configCategories {
+            for item in category.items where item.isEnabled {
+                guard let source = ModsLibrary.shared.sourceURL(for: item.id) else {
+                    missing.append("\(item.title) (sin carpeta en Documents/Mods/\(item.id))")
+                    continue
                 }
-
-                Button {
-                    viewModel.applyAndLaunchExternalApp()
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "arrow.up.right.square.fill")
-                        Text("Aplicar y lanzar").fontWeight(.bold)
-                    }
-                    .frame(maxWidth: .infinity).padding(.vertical, 16)
-                    .background(LinearGradient(colors: [Theme.safeGreen, .teal], startPoint: .leading, endPoint: .trailing))
-                    .foregroundStyle(.black)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                }
-
-                Button {
-                    viewModel.restoreOriginalMods()
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "arrow.counterclockwise.circle.fill")
-                        Text("Restaurar original (quitar mods)").fontWeight(.semibold)
-                    }
-                    .frame(maxWidth: .infinity).padding(.vertical, 14)
-                    .background(Theme.card)
-                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.cardStroke, lineWidth: 1))
-                    .foregroundStyle(Theme.textPrimary)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                }
-
-                Card {
-                    HStack(spacing: 10) {
-                        Image(systemName: "exclamationmark.shield.fill").foregroundStyle(Theme.safeGreen)
-                        Text("Cerrá Free Fire antes de aplicar. Todo se respalda y podés volver atrás con un toque.")
-                            .font(.caption).foregroundStyle(Theme.textSecondary)
-                    }
-                }
-            }
-            .padding(16)
-        }
-    }
-}
-
-// MARK: - Perfil
-struct ProfileView: View {
-    @ObservedObject var viewModel: AppViewModel
-    @State private var music = true
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                Card {
-                    HStack(spacing: 12) {
-                        RoundedRectangle(cornerRadius: 12).fill(Theme.pill)
-                            .frame(width: 48, height: 48)
-                            .overlay(Image(systemName: "person.fill").foregroundStyle(.white))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(viewModel.licenseInfo?.role.uppercased() ?? "USUARIO")
-                                .font(.caption).foregroundStyle(Theme.textSecondary)
-                            Text("Cuenta").font(.headline).foregroundStyle(.white)
-                        }
-                        Spacer()
-                        Badge(text: "Activo")
-                    }
-                }
-                Card {
-                    VStack(spacing: 12) {
-                        row("key.fill", "Clave", viewModel.licenseInfo?.license_key ?? viewModel.licenseKeyInput)
-                        Divider().background(Theme.cardStroke)
-                        row("clock.fill", "Tiempo restante", viewModel.heartbeatData?.formattedRemainingTime ?? "—")
-                        Divider().background(Theme.cardStroke)
-                        row("number", "UDID", String(viewModel.hwid.prefix(16)) + "…")
-                    }
-                }
-                Card {
-                    HStack {
-                        IconBox(system: "music.note")
-                        Text("Música").font(.subheadline).foregroundStyle(Theme.textPrimary)
-                        Spacer()
-                        Toggle("", isOn: $music).labelsHidden().tint(Theme.safeGreen)
-                    }
-                }
-                Button { viewModel.logout() } label: {
-                    HStack {
-                        Image(systemName: "rectangle.portrait.and.arrow.right")
-                        Text("Cerrar sesión").font(.subheadline.weight(.semibold))
-                    }
-                    .foregroundStyle(Theme.danger)
-                    .frame(maxWidth: .infinity).padding(16)
-                    .background(Theme.card)
-                    .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.cardStroke, lineWidth: 1))
-                    .clipShape(RoundedRectangle(cornerRadius: 18))
-                }
-            }
-            .padding(16)
-        }
-    }
-    func row(_ icon: String, _ title: String, _ value: String) -> some View {
-        HStack(spacing: 12) {
-            IconBox(system: icon)
-            Text(title).font(.subheadline).foregroundStyle(Theme.textPrimary)
-            Spacer()
-            Text(value).font(.subheadline).foregroundStyle(Theme.textSecondary).lineLimit(1)
-        }
-    }
-}
-
-// MARK: - Soporte
-struct SupportView: View {
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                link("bubble.left.and.bubble.right.fill", "Soporte Discord", "Únete para recibir ayuda", "https://discord.gg/")
-                link("megaphone.fill", "Anuncios", "Novedades y actualizaciones", "https://discord.gg/")
-                link("doc.text.fill", "Términos y condiciones", "Lee antes de usar", "https://discord.gg/")
-            }
-            .padding(16)
-        }
-    }
-    func link(_ icon: String, _ title: String, _ subtitle: String, _ url: String) -> some View {
-        Link(destination: URL(string: url)!) {
-            Card {
-                HStack(spacing: 12) {
-                    IconBox(system: icon)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
-                        Text(subtitle).font(.caption).foregroundStyle(Theme.textSecondary)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right").foregroundStyle(Theme.textSecondary)
+                do {
+                    let rep = try installer.install(modID: item.id, from: source, into: destination)
+                    done.append("\(item.title) (+\(rep.installedFiles) nuevos, \(rep.skipped) ya ok)")
+                    NSLog("✅ Instalado \(item.id) -> \(destination.path)")
+                } catch {
+                    NSLog("⚠️ Error instalando \(item.id): \(error.localizedDescription)")
+                    missing.append("\(item.title) (\(error.localizedDescription))")
                 }
             }
         }
+
+        var summary = "Mods aplicados (seguro, con backup):\n"
+        summary += done.isEmpty ? "• (ninguno tenía archivos aún)\n" : done.map { "• \($0)" }.joined(separator: "\n") + "\n"
+        if !missing.isEmpty {
+            summary += "\nNo aplicados:\n" + missing.map { "• \($0)" }.joined(separator: "\n")
+        }
+        summary += "\n\n💡 Tip: aplicá con Free Fire CERRADO."
+        self.lastSyncSummary = summary
+
+        launchExternal(urlScheme: urlScheme, activeFlags: activeFlags)
+    }
+
+    // MARK: - Restaurar original (quitar mods)
+
+    public func restoreOriginalMods() {
+        guard !isSyncing, !isRestoring else { return }
+        Task { await restore() }
+    }
+
+    private func restore() async {
+        isRestoring = true
+        defer { isRestoring = false }
+
+        guard let ffContainer = HouseArrestManager.shared.containerURL(forBundleID: HouseArrestManager.freeFireBundleID) else {
+            presentError("No se pudo acceder al contenedor de Free Fire para restaurar.")
+            return
+        }
+        let destination = ffContainer.appendingPathComponent(freeFireAssetsSubpath)
+        do {
+            let rep = try ModInstaller.shared.restoreAll(in: destination)
+            let msg = "Restaurado a como estaba:\n• \(rep.restoredOriginals) archivos originales devueltos\n• \(rep.removedAddedFiles) archivos añadidos eliminados"
+            self.lastRestoreSummary = msg
+            presentExternalAppInfo(title: "Restaurado", message: msg)
+        } catch {
+            presentError("Error al restaurar: \(error.localizedDescription)")
+        }
+    }
+
+    private func launchExternal(urlScheme: String, activeFlags: [String: Bool]) {
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: activeFlags, options: []),
+              let jsonString = String(data: jsonData, encoding: .utf8) else {
+            presentExternalAppInfo(title: "Configuración Aplicada", message: lastSyncSummary ?? "Listo.")
+            return
+        }
+        guard var components = URLComponents(string: urlScheme) else {
+            presentExternalAppInfo(title: "Configuración Aplicada", message: lastSyncSummary ?? "Listo.")
+            return
+        }
+        components.queryItems = [
+            URLQueryItem(name: "config", value: jsonString),
+            URLQueryItem(name: "hwid", value: hwid),
+            URLQueryItem(name: "license", value: licenseInfo?.license_key ?? licenseKeyInput)
+        ]
+        guard let finalURL = components.url else {
+            presentExternalAppInfo(title: "Configuración Aplicada", message: lastSyncSummary ?? "Listo.")
+            return
+        }
+        if UIApplication.shared.canOpenURL(finalURL) {
+            UIApplication.shared.open(finalURL, options: [:]) { success in
+                if !success { self.presentExternalAppInfo(title: "Assets Copiados", message: self.lastSyncSummary ?? "Listo.") }
+            }
+        } else {
+            presentExternalAppInfo(
+                title: "Assets Copiados",
+                message: (lastSyncSummary ?? "Listo.") + "\n\n(No se pudo abrir '\(urlScheme)' — abrí Free Fire manualmente.)"
+            )
+        }
+    }
+
+    private func presentError(_ message: String) {
+        self.errorMessage = message
+        self.showErrorAlert = true
+    }
+    private func presentExternalAppInfo(title: String, message: String) {
+        self.externalAppAlertTitle = title
+        self.externalAppAlertMessage = message
+        self.showExternalAppAlert = true
     }
 }
