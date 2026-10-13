@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// Explorador de diagnóstico: se conecta al contenedor de Free Fire vía
-/// MobileHouseArrest y muestra su estructura REAL para saber dónde van los mods.
+/// MobileHouseArrest, muestra su estructura REAL y permite EXPORTAR archivos
+/// a Documents/Extracted para editarlos y reinyectarlos como mod.
 struct FFExplorerView: View {
 
     @State private var rootURL: URL?
@@ -91,29 +92,35 @@ struct FFExplorerView: View {
                 }
 
                 ForEach(entries) { e in
-                    Button {
-                        if e.isDir { enter(e.name) }
-                    } label: {
-                        Card {
-                            HStack(spacing: 12) {
-                                IconBox(system: e.isDir ? "folder.fill" : "doc.fill")
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(e.name)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(Theme.textPrimary)
-                                        .lineLimit(1)
-                                    Text(e.isDir ? "Carpeta" : humanSize(e.size))
-                                        .font(.caption2).foregroundStyle(Theme.textSecondary)
+                    Card {
+                        HStack(spacing: 12) {
+                            IconBox(system: e.isDir ? "folder.fill" : "doc.fill")
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(e.name)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Theme.textPrimary)
+                                    .lineLimit(1)
+                                Text(e.isDir ? "Carpeta" : humanSize(e.size))
+                                    .font(.caption2).foregroundStyle(Theme.textSecondary)
+                            }
+                            Spacer()
+                            if !e.isDir {
+                                Button { export(e) } label: {
+                                    Image(systemName: "square.and.arrow.down")
+                                        .font(.body)
                                 }
-                                Spacer()
-                                if e.isDir {
-                                    Image(systemName: "chevron.right")
-                                        .foregroundStyle(Theme.textSecondary)
-                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(Theme.safeGreen)
+                                .padding(.trailing, 6)
+                            }
+                            if e.isDir {
+                                Image(systemName: "chevron.right")
+                                    .foregroundStyle(Theme.textSecondary)
                             }
                         }
                     }
-                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .onTapGesture { if e.isDir { enter(e.name) } }
                 }
             }
             .padding(16)
@@ -180,6 +187,26 @@ struct FFExplorerView: View {
                 isBusy = false
                 entries = list
             }
+        }
+    }
+
+    /// Copia un archivo del contenedor de Free Fire a NUESTRO Documents/Extracted,
+    /// respetando la ruta relativa (así se puede editar y reinyectar tal cual).
+    private func export(_ e: Entry) {
+        guard let root = rootURL, !e.isDir else { return }
+        let src = root.appendingPathComponent(relativePath).appendingPathComponent(e.name)
+        let docs = (try? fm.url(for: .documentDirectory, in: .userDomainMask,
+                                appropriateFor: nil, create: true)) ?? fm.temporaryDirectory
+        var dst = docs.appendingPathComponent("Extracted")
+        if !relativePath.isEmpty { dst = dst.appendingPathComponent(relativePath) }
+        try? fm.createDirectory(at: dst, withIntermediateDirectories: true)
+        let final = dst.appendingPathComponent(e.name)
+        try? fm.removeItem(at: final)
+        do {
+            try fm.copyItem(at: src, to: final)
+            status = "Exportado ✅ → Documents/Extracted/\(relativePath)/\(e.name)"
+        } catch {
+            status = "❌ No se pudo exportar: \(error.localizedDescription)"
         }
     }
 
