@@ -30,11 +30,13 @@ final class ModInstaller {
 
     enum InstallError: LocalizedError {
         case sourceMissing(String)
+        case sourceEmpty(String)
         case verifyFailed(String)
         case writeFailed(String, Error)
         var errorDescription: String? {
             switch self {
             case .sourceMissing(let m): return "No se encontró la carpeta del mod '\(m)'."
+            case .sourceEmpty(let m): return "El mod '\(m)' no tiene archivos adentro."
             case .verifyFailed(let f): return "Integridad falló en '\(f)' (se revirtió)."
             case .writeFailed(let f, let e): return "Error escribiendo '\(f)': \(e.localizedDescription)"
             }
@@ -70,6 +72,8 @@ final class ModInstaller {
         var manifest = loadManifest(in: destination)
         var report = InstallReport(installedFiles: 0, backedUpOriginals: 0, skipped: 0)
         let files = relativeFiles(in: source)
+
+        if files.isEmpty { throw InstallError.sourceEmpty(modID) }
 
         for rel in files {
             let srcURL = source.appendingPathComponent(rel)
@@ -147,16 +151,19 @@ final class ModInstaller {
 
     // MARK: - Helpers
 
+    /// Recorre el mod SIN skipear ocultos, pero ignorando .gitkeep / .DS_Store.
+    /// Conserva la ruta relativa (para que el mod espeje contentcache/... del juego).
     private func relativeFiles(in root: URL) -> [String] {
         var out: [String] = []
         guard let en = fm.enumerator(at: root,
                                      includingPropertiesForKeys: [.isDirectoryKey],
-                                     options: [.skipsHiddenFiles]) else { return [] }
+                                     options: []) else { return [] }
         for case let u as URL in en {
             let isDir = (try? u.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-            if !isDir {
-                out.append(u.path.replacingOccurrences(of: root.path + "/", with: ""))
-            }
+            if isDir { continue }
+            let name = u.lastPathComponent
+            if name == ".gitkeep" || name == ".DS_Store" { continue }
+            out.append(u.path.replacingOccurrences(of: root.path + "/", with: ""))
         }
         return out
     }
