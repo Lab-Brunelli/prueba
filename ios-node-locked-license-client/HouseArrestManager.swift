@@ -5,6 +5,9 @@ import XPC
 /// Acceso a contenedores de otras apps via el permiso privado MobileHouseArrest.
 /// REQUISITO: el Bundle ID de esta app debe ser exactamente
 /// "com.apple.mobile.MobileHouseArrest".
+///
+/// Verificado contra el PoC real 0xjohnnydev/MobileHouseArrest-PoC:
+/// class 2, xpc_string_create directo, flags 0x900000000, activate(object,false).
 final class HouseArrestManager {
 
     static let shared = HouseArrestManager()
@@ -17,6 +20,9 @@ final class HouseArrestManager {
 
     private var liveQueries: [UnsafeMutableRawPointer] = []
     private var liveObjects: [UnsafeMutableRawPointer] = []
+
+    /// Caché del contenedor para no re-consultar en cada llamada.
+    private var cachedContainer: URL?
 
     private var pQueryCreate: (@convention(c) () -> UnsafeMutableRawPointer?)?
     private var pQuerySetClass: (@convention(c) (UnsafeMutableRawPointer?, UInt64) -> Void)?
@@ -52,7 +58,10 @@ final class HouseArrestManager {
     }
 
     /// Devuelve la URL del contenedor de datos de otra app y ACTIVA el acceso de lectura/escritura.
+    /// Usa caché: si ya lo tenemos, no vuelve a consultar.
     func containerURL(forBundleID bundleID: String) -> URL? {
+        if let c = cachedContainer { return c }
+
         guard loadIfNeeded(),
               let queryCreate = pQueryCreate,
               let querySetClass = pQuerySetClass,
@@ -84,6 +93,17 @@ final class HouseArrestManager {
 
         liveQueries.append(query)
         liveObjects.append(object)
-        return URL(fileURLWithPath: path)
+
+        let url = URL(fileURLWithPath: path)
+        cachedContainer = url
+        return url
+    }
+
+    /// Re-pide y re-activa el contenedor. Llamar cuando la app vuelve a primer plano:
+    /// así DESACTIVAR sigue funcionando aunque iOS haya soltado la extensión de sandbox.
+    @discardableResult
+    func reattach() -> Bool {
+        cachedContainer = nil
+        return containerURL(forBundleID: Self.freeFireBundleID) != nil
     }
 }
