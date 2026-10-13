@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Panel de control con el flujo INDETECTABLE en 4 pasos.
-/// Activás con el juego cerrado → cargás el juego → desactivás → seguís jugando.
+/// Panel de control con el flujo INDETECTABLE exacto.
+/// Activás con el juego cargando (antes del lobby) → cargás el lobby → desactivás.
 struct ModControlView: View {
 
     @EnvironmentObject var vm: AppViewModel
@@ -10,7 +10,6 @@ struct ModControlView: View {
         ScrollView {
             VStack(spacing: 16) {
 
-                // Estado
                 Card {
                     HStack(spacing: 12) {
                         Circle()
@@ -21,15 +20,14 @@ struct ModControlView: View {
                                 .font(.subheadline.weight(.bold))
                                 .foregroundStyle(vm.modsInstalled ? Theme.safeGreen : Theme.textPrimary)
                             Text(vm.modsInstalled
-                                 ? "Cargá Free Fire ahora, después volvé y desactivá."
-                                 : "Activá para escribir los mods.")
+                                 ? "Cargá Free Fire hasta el lobby, después volvé y desactivá."
+                                 : "Activá antes de que Free Fire lea los assets.")
                                 .font(.caption2).foregroundStyle(Theme.textSecondary)
                         }
                         Spacer()
                     }
                 }
 
-                // Botón principal
                 Button {
                     if vm.modsInstalled { vm.deactivateMods() } else { vm.activateMods() }
                 } label: {
@@ -46,7 +44,6 @@ struct ModControlView: View {
                 }
                 .disabled(vm.isSyncing || vm.isRestoring)
 
-                // Abrir juego
                 Button {
                     vm.openFreeFire()
                 } label: {
@@ -58,21 +55,20 @@ struct ModControlView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
 
-                // Guía
                 Card {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("FLUJO INDETECTABLE")
-                            .font(.caption.weight(.bold)).foregroundStyle(Theme.textSecondary)
-                        step("1", "Abrí Free Fire y salí (crea los archivos base).", true)
-                        step("2", "Cerrá Free Fire del todo.", true)
+                        Text("FLUJO INDETECTABLE").font(.caption.weight(.bold)).foregroundStyle(Theme.textSecondary)
+
+                        step("1", "Abrí Free Fire y dejalo cargar hasta ~40%. Salí SIN cerrarlo (queda en segundo plano).", true)
+                        step("2", "Abrí FX y elegí el mod en Inicio.", true)
                         step("3", "Tocá ACTIVAR acá.", true)
-                        step("4", "Abrí Free Fire y cargá hasta el LOBBY.", true)
-                        step("5", "Volvé acá (no cierres Free Fire) y tocá DESACTIVAR.", true)
-                        step("6", "Volvé a Free Fire: el mod sigue activo, disco original.", false)
+                        step("4", "Volvé a Free Fire y esperá a que cargue TODO y aparezca el lobby.", true)
+                        step("5", "Volvé a FX y tocá DESACTIVAR.", true)
+                        step("6", "Cerrá FX. Volvé a Free Fire y probá: el mod sigue andando.", false)
 
                         Divider().padding(.vertical, 4)
 
-                        Text("Por qué no hay ban: nada se inyecta en el proceso del juego. Los assets se leen de archivo al cargar y quedan en RAM. Después el disco vuelve a estar 100% original.")
+                        Text("Por qué no hay ban: nada se inyecta en el proceso del juego. Los assets se leen de archivo durante la carga y quedan en RAM. Al desactivar, el disco vuelve a estar 100% original.")
                             .font(.caption2).foregroundStyle(Theme.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
